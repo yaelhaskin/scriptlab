@@ -1,0 +1,6 @@
+body {
+	margin: 0;
+	font-family: 'Rubik';
+	min-height: 100vh;
+	/* overflow: hidden; */
+}

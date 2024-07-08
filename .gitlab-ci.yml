@@ -1,0 +1,143 @@
+stages:
+  - build
+  - publish
+  - sonarqube-check
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        ENVIRONMENT_NAME: development
+        TAG_PREFIX: "dev-"
+    - if: $CI_COMMIT_BRANCH == "test"
+      variables:
+        ENVIRONMENT_NAME: testing
+        TAG_PREFIX: "test-"
+    - if: $CI_COMMIT_TAG
+      variables:
+        ENVIRONMENT_NAME: production
+        TAG_PREFIX: ""
+variables:
+  build_tag: $CI_COMMIT_BRANCH-$CI_COMMIT_SHORT_SHA
+
+.build:untagged:
+  stage: build
+  image: gcr.io/kaniko-project/executor:v1.9.0-debug
+  script:
+    - echo "kaniko path" $PWD
+    - echo "Building image..."
+    - /kaniko/executor --context $CI_PROJECT_DIR/$SIDE --dockerfile Dockerfile --destination "sharedservicesbsmchprodacr.azurecr.io/asgard/scriptlab-$SIDE:$build_tag"
+    - echo "Image built!"
+  rules:
+    - if: $ENVIRONMENT_NAME =~ /(development|testing)/
+
+.build:tagged:
+  stage: build
+  image: gcr.io/kaniko-project/executor:v1.9.0-debug
+  script:
+    - echo "kaniko path" $PWD
+    - echo "Building image..."
+    - /kaniko/executor --context $CI_PROJECT_DIR/$SIDE --dockerfile Dockerfile --destination "sharedservicesbsmchprodacr.azurecr.io/asgard/scriptlab-$SIDE:$CI_COMMIT_TAG"
+    - echo "Image built!"
+  rules:
+    - if: $ENVIRONMENT_NAME == "production"
+  
+.publish:untagged:
+  stage: publish
+  image:
+    name: gcr.io/go-containerregistry/crane:debug
+    entrypoint: [""]
+  script:
+    - echo "Logging into the container registry..."
+    - crane auth login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "Login successful! Updating image tag..."
+    - crane tag sharedservicesbsmchprodacr.azurecr.io/asgard/scriptlab-$SIDE:$build_tag ${TAG_PREFIX}latest
+    - echo "Image tag updated!"
+  rules:
+    - if: $ENVIRONMENT_NAME =~ /(development|testing)/
+
+.publish:tagged:
+  stage: publish
+  image:
+    name: gcr.io/go-containerregistry/crane:debug
+    entrypoint: [""]
+  script:
+    - echo "Logging into the container registry..."
+    - crane auth login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "Login successful! Updating image tag..."
+    - crane tag sharedservicesbsmchprodacr.azurecr.io/asgard/scriptlab-$SIDE:$CI_COMMIT_TAG latest
+    - echo "Image tag updated!"
+  rules:
+    - if: $ENVIRONMENT_NAME == "production"
+
+build:frontend:untagged:
+  extends: .build:untagged
+  rules:
+    - if: $ENVIRONMENT_NAME =~ /(development|testing)/
+      changes:
+        - frontend/**/*
+  variables:
+    SIDE: frontend
+
+build:frontend:tagged:
+  extends: .build:tagged
+  rules:
+    - if: $ENVIRONMENT_NAME == "production"
+      changes:
+        - frontend/**/*
+  variables:
+    SIDE: frontend
+
+publish:frontend:untagged:
+  extends: .publish:untagged
+  rules:
+    - if: $ENVIRONMENT_NAME =~ /^(development|testing)$/
+      changes:
+      - frontend/**/*
+  variables:
+    SIDE: frontend
+
+publish:frontend:tagged:
+  extends: .publish:tagged
+  rules:
+    - if: $ENVIRONMENT_NAME == "production"
+      changes:
+      - frontend/**/*
+  variables:
+    SIDE: frontend
+
+build:backend:untagged:
+  extends: .build:untagged
+  rules:
+    - if: $ENVIRONMENT_NAME =~ /(development|testing)/
+      changes:
+        - backend/**/*
+  variables:
+    SIDE: backend
+
+build:backend:tagged:
+  extends: .build:tagged
+  rules:
+    - if: $ENVIRONMENT_NAME == "production"
+      changes:
+        - backend/**/*
+  variables:
+    SIDE: backend
+
+publish:backend:untagged:
+  extends: .publish:untagged
+  variables:
+    SIDE: backend
+  rules:
+    - if: $ENVIRONMENT_NAME =~ /^(development|testing)$/
+      changes:
+      - backend/**/*
+
+publish:backend:tagged:
+  extends: .publish:tagged
+  rules:
+    - if: $ENVIRONMENT_NAME == "production"
+      changes:
+      - backend/**/*
+  variables:
+    SIDE: backend

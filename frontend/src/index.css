@@ -1,0 +1,9 @@
+#root {
+  -webkit-text-stroke: 1px black;
+  text-align: center;
+  touch-action: manipulation;
+}
+
+body {
+  overflow: hidden;
+}
